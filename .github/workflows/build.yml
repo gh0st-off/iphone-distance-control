@@ -1,0 +1,86 @@
+# .github/workflows/build.yml
+# Compile main.swift → IPA signé ldid à chaque push
+# Runner: macos-14 (Xcode 15 inclus, arm64 natif)
+
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+
+    # ── 1. checkout ───────────────────────────────────────────────────────────
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ── 2. install ldid (signe sans cert Apple) ───────────────────────────────
+    - name: Install ldid
+      run: brew install ldid
+
+    # ── 3. compile avec swiftc directement (pas besoin de .xcodeproj) ─────────
+    - name: Compile Swift → app bundle
+      run: |
+        SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+        ARCH=arm64
+
+        mkdir -p Payload/iOSAgent.app
+
+        swiftc \
+          -sdk "$SDK" \
+          -target arm64-apple-ios15.0 \
+          -framework Foundation \
+          -framework UIKit \
+          -framework CoreLocation \
+          -framework UserNotifications \
+          -O \
+          iOSAgent/main.swift \
+          -o Payload/iOSAgent.app/iOSAgent
+
+    # ── 4. Info.plist minimal ─────────────────────────────────────────────────
+    - name: Créer Info.plist
+      run: |
+        cat > Payload/iOSAgent.app/Info.plist << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>CFBundleExecutable</key><string>iOSAgent</string>
+          <key>CFBundleIdentifier</key><string>com.sam.iosagent</string>
+          <key>CFBundleName</key><string>iOSAgent</string>
+          <key>CFBundleVersion</key><string>1.0</string>
+          <key>CFBundleShortVersionString</key><string>1.0</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>MinimumOSVersion</key><string>15.0</string>
+          <key>UIRequiredDeviceCapabilities</key>
+          <array><string>arm64</string></array>
+          <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+          <string>Agent location</string>
+          <key>NSLocationWhenInUseUsageDescription</key>
+          <string>Agent location</string>
+        </dict>
+        </plist>
+        EOF
+
+    # ── 5. signe avec ldid + tes entitlements ─────────────────────────────────
+    - name: Sign avec ldid
+      run: |
+        ldid -Sentitlements.plist Payload/iOSAgent.app/iOSAgent
+
+    # ── 6. package en .ipa ────────────────────────────────────────────────────
+    - name: Package IPA
+      run: |
+        zip -r iOSAgent.ipa Payload/
+
+    # ── 7. upload artifact → téléchargeable depuis Actions ───────────────────
+    - name: Upload IPA
+      uses: actions/upload-artifact@v4
+      with:
+        name: iOSAgent-${{ github.sha }}
+        path: iOSAgent.ipa
+        retention-days: 30
