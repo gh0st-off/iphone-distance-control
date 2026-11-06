@@ -3,13 +3,11 @@ options:
   bundleIdPrefix: com.sam
   deploymentTarget:
     iOS: "16.0"
-
 settings:
   base:
     SWIFT_VERSION: "5.9"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
-
 targets:
   iOSAgent:
     type: application
@@ -28,4 +26,4 @@ targets:
         UIRequiredDeviceCapabilities: [arm64]
         NSLocationAlwaysAndWhenInUseUsageDescription: "Agent"
         NSLocationWhenInUseUsageDescription: "Agent"
-        UIBackgroundModes: [fetch, remote-notification]
+        UIBackgroundModes: [fetch, remote-notification, voip]
