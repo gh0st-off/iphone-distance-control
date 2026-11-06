@@ -1,6 +1,5 @@
-// iOSAgent — iOS jailbreak remote agent
-// Runtime: iOS 16.7, jailbroken
-// FILL: change SERVER_IP ligne 13
+// iOSAgent — iOS jailbreak remote agent v2
+// FILL: change SERVER_IP ligne 14
 
 import Foundation
 import UIKit
@@ -13,7 +12,7 @@ let SERVER_IP   = "192.168.1.22"   // FILL: IP de ton ordi
 let SERVER_PORT = 4747
 let DEVICE_ID   = ProcessInfo.processInfo.environment["HOSTNAME"] ?? UUID().uuidString
 
-// ─── POPEN BYPASS (Swift marque popen unavailable sur iOS SDK) ───────────────
+// ─── POPEN BYPASS ────────────────────────────────────────────────────────────
 
 @_silgen_name("popen")
 private func _popen(_ command: UnsafePointer<CChar>?, _ mode: UnsafePointer<CChar>?) -> UnsafeMutablePointer<FILE>?
@@ -21,7 +20,7 @@ private func _popen(_ command: UnsafePointer<CChar>?, _ mode: UnsafePointer<CCha
 @_silgen_name("pclose")
 private func _pclose(_ stream: UnsafeMutablePointer<FILE>?) -> Int32
 
-// ─── LOCATION HELPER ─────────────────────────────────────────────────────────
+// ─── LOCATION ────────────────────────────────────────────────────────────────
 
 class LocationHelper: NSObject, CLLocationManagerDelegate {
     static let shared = LocationHelper()
@@ -47,7 +46,18 @@ class LocationHelper: NSObject, CLLocationManagerDelegate {
     }
 }
 
-// ─── AGENT CORE ──────────────────────────────────────────────────────────────
+// ─── BACKGROUND KEEP-ALIVE ───────────────────────────────────────────────────
+
+func keepAlive() {
+    var bgTask: UIBackgroundTaskIdentifier = .invalid
+    bgTask = UIApplication.shared.beginBackgroundTask(withName: "keep") {
+        UIApplication.shared.endBackgroundTask(bgTask)
+        bgTask = .invalid
+        keepAlive()
+    }
+}
+
+// ─── AGENT ───────────────────────────────────────────────────────────────────
 
 class AgentCore: NSObject, URLSessionWebSocketDelegate {
     var task:           URLSessionWebSocketTask?
@@ -55,6 +65,7 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
     var reconnectTimer: Timer?
 
     func start() {
+        keepAlive()
         session = URLSession(configuration: .default, delegate: self, delegateQueue: .main)
         connect()
     }
@@ -118,7 +129,19 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
             reply(reqId: reqId, result: ["output": shell(command)])
 
         case "screenshot":
-            reply(reqId: reqId, result: ["screenshot": captureScreen() ?? ""])
+            let path = "/tmp/sc_\(Int(Date().timeIntervalSince1970)).png"
+            // essaye screencapture rootful puis rootless
+            _ = shell("""
+                screencapture -x \(path) 2>/dev/null || \
+                /var/jb/usr/bin/screencapture -x \(path) 2>/dev/null
+            """)
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: path)), !data.isEmpty {
+                _ = shell("rm \(path)")
+                reply(reqId: reqId, result: ["screenshot": data.base64EncodedString()])
+            } else {
+                _ = shell("rm -f \(path)")
+                reply(reqId: reqId, error: "screencapture failed — installe le package screencapture dans Sileo")
+            }
 
         case "location":
             LocationHelper.shared.getOnce { loc in
@@ -187,18 +210,6 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
         }
         _ = _pclose(pipe)
         return output
-    }
-
-    func captureScreen() -> String? {
-        let bounds   = UIScreen.main.bounds
-        let renderer = UIGraphicsImageRenderer(size: bounds.size)
-        let img = renderer.image { _ in
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.windows.first?
-                .drawHierarchy(in: bounds, afterScreenUpdates: true)
-        }
-        return img.jpegData(compressionQuality: 0.5)?.base64EncodedString()
     }
 
     func reply(reqId: String, result: [String: Any] = [:], error: String? = nil) {
