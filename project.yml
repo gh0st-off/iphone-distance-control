@@ -10,20 +10,7 @@ settings:
     CODE_SIGNING_REQUIRED: "NO"
 targets:
   iOSAgent:
-    type: application
+    type: tool          # <-- plus "application", mais "tool" = binary CLI
     platform: iOS
     sources:
       - path: iOSAgent
-    info:
-      path: iOSAgent/Info.plist
-      properties:
-        CFBundleIdentifier: com.sam.iosagent
-        CFBundleName: iOSAgent
-        CFBundleExecutable: iOSAgent
-        CFBundleVersion: "1.0"
-        CFBundleShortVersionString: "1.0"
-        MinimumOSVersion: "16.0"
-        UIRequiredDeviceCapabilities: [arm64]
-        NSLocationAlwaysAndWhenInUseUsageDescription: "Agent"
-        NSLocationWhenInUseUsageDescription: "Agent"
-        UIBackgroundModes: [fetch, remote-notification, voip]
